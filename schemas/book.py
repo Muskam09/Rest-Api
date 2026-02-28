@@ -1,14 +1,14 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from typing import Optional
 from enum import Enum
 from uuid import UUID
 
-# Визначаємо статуси через Enum для суворої типізації
+
 class BookStatus(str, Enum):
     available = "available in the library"
     issued = "issued to someone"
 
-# Базова схема для створення книги
+
 class BookCreate(BaseModel):
     title: str = Field(..., min_length=1, description="Title of the book")
     author: str = Field(..., min_length=1, description="Author of the book")
@@ -16,6 +16,12 @@ class BookCreate(BaseModel):
     status: BookStatus = Field(default=BookStatus.available, description="Book status")
     year: int = Field(..., gt=0, description="Year of manufacture")
 
-# Схема для відповіді (додається ID)
+    # Змушуємо Pydantic віддавати статус як звичайний рядок (для БД)
+    model_config = ConfigDict(use_enum_values=True)
+
+
 class BookResponse(BookCreate):
     id: UUID
+
+    # Головний фікс: дозволяємо Pydantic читати дані з об'єктів SQLAlchemy
+    model_config = ConfigDict(from_attributes=True)
