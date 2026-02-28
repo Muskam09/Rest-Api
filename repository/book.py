@@ -11,24 +11,25 @@ class BookRepository:
     async def get_all(
         self,
         limit: int = 10,
-        offset: int = 0,
+        cursor: Optional[UUID] = None,
         status: Optional[str] = None,
-        author: Optional[str] = None,
-        sort_by: Optional[str] = None
+        author: Optional[str] = None
     ) -> List[Book]:
-        query = select(Book)
+        # Для курсорної пагінації базове сортування має бути незмінним (наприклад, по ID)
+        query = select(Book).order_by(Book.id)
 
+        # Фільтрація по статусу та автору
         if status:
             query = query.where(Book.status == status)
         if author:
             query = query.where(Book.author == author)
 
-        if sort_by == "title":
-            query = query.order_by(Book.title)
-        elif sort_by == "year":
-            query = query.order_by(Book.year)
+        # Логіка КУРСОРУ: беремо тільки ті записи, id яких "більший" за курсор
+        if cursor:
+            query = query.where(Book.id > cursor)
 
-        query = query.limit(limit).offset(offset)
+        # Ліміт залишається
+        query = query.limit(limit)
 
         result = await self.session.execute(query)
         return list(result.scalars().all())

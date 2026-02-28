@@ -13,22 +13,18 @@ class BookService:
     async def get_books(
             self,
             limit: int = 10,
-            offset: int = 0,
+            cursor: Optional[UUID] = None,
             status: Optional[BookStatus] = None,
-            author: Optional[str] = None,
-            sort_by: Optional[str] = None
+            author: Optional[str] = None
     ) -> List[BookResponse]:
-        # Витягуємо строкове значення з Enum для передачі в БД
         status_val = status.value if status else None
 
         books = await self.repo.get_all(
             limit=limit,
-            offset=offset,
+            cursor=cursor,
             status=status_val,
-            author=author,
-            sort_by=sort_by
+            author=author
         )
-        # model_validate автоматично перетворює ORM об'єкт у Pydantic схему
         return [BookResponse.model_validate(b) for b in books]
 
     async def get_book_by_id(self, book_id: UUID) -> Optional[BookResponse]:

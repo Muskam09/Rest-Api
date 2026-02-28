@@ -16,19 +16,17 @@ def get_book_service(session: AsyncSession = Depends(get_db)) -> BookService:
 @router.get("/", response_model=List[BookResponse], status_code=status.HTTP_200_OK)
 async def get_books(
     limit: int = Query(10, ge=1, description="Number of records to return"),
-    offset: int = Query(0, ge=0, description="Number of records to skip"),
+    cursor: Optional[UUID] = Query(None, description="Cursor (ID of the last item from the previous page)"),
     status_filter: Optional[BookStatus] = Query(None, alias="status", description="Filter by status"),
     author: Optional[str] = Query(None, description="Filter by author"),
-    sort_by: Optional[str] = Query(None, description="Sort by (title or year)"),
     service: BookService = Depends(get_book_service)
 ):
-    """Get list of books with filtering, sorting, and Limit-Offset pagination."""
+    """Get list of books using Cursor pagination."""
     return await service.get_books(
         limit=limit,
-        offset=offset,
+        cursor=cursor,
         status=status_filter,
-        author=author,
-        sort_by=sort_by
+        author=author
     )
 
 @router.get("/{book_id}", response_model=BookResponse, status_code=status.HTTP_200_OK)
