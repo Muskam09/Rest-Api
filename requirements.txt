@@ -1,8 +1,8 @@
 fastapi
 uvicorn[standard]
 pydantic
-sqlalchemy
-asyncpg
+pydantic-mongo
+motor
 pytest
 httpx
 pytest-asyncio

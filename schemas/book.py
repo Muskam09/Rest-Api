@@ -1,7 +1,7 @@
 from pydantic import BaseModel, Field, ConfigDict
 from typing import Optional
 from enum import Enum
-from uuid import UUID
+from pydantic_mongo import ObjectIdField
 
 
 class BookStatus(str, Enum):
@@ -10,18 +10,20 @@ class BookStatus(str, Enum):
 
 
 class BookCreate(BaseModel):
-    title: str = Field(..., min_length=1, description="Title of the book")
-    author: str = Field(..., min_length=1, description="Author of the book")
-    description: Optional[str] = Field(None, description="Description")
-    status: BookStatus = Field(default=BookStatus.available, description="Book status")
-    year: int = Field(..., gt=0, description="Year of manufacture")
+    title: str = Field(..., min_length=1)
+    author: str = Field(..., min_length=1)
+    description: Optional[str] = None
+    status: BookStatus = Field(default=BookStatus.available)
+    year: int = Field(..., gt=0)
 
-    # Змушуємо Pydantic віддавати статус як звичайний рядок (для БД)
+    # Зберігаємо enum як строку в БД
     model_config = ConfigDict(use_enum_values=True)
 
 
 class BookResponse(BookCreate):
-    id: UUID
+    # ObjectIdField автоматично валідує і конвертує ObjectId з MongoDB
+    # alias="_id" каже Pydantic: "в базі це поле називається _id, але клієнту віддавай як id"
+    id: ObjectIdField = Field(alias="_id")
 
-    # Головний фікс: дозволяємо Pydantic читати дані з об'єктів SQLAlchemy
-    model_config = ConfigDict(from_attributes=True)
+    # Дозволяємо Pydantic шукати поля за псевдонімами
+    model_config = ConfigDict(populate_by_name=True)

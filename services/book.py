@@ -1,19 +1,19 @@
 from typing import List, Optional
-from uuid import UUID
-from sqlalchemy.ext.asyncio import AsyncSession
+from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from schemas.book import BookCreate, BookResponse, BookStatus
 from repository.book import BookRepository
 
 
 class BookService:
-    def __init__(self, session: AsyncSession):
-        self.repo = BookRepository(session)
+    # 1. Замість AsyncSession приймаємо об'єкт бази даних MongoDB
+    def __init__(self, db: AsyncIOMotorDatabase):
+        self.repo = BookRepository(db)
 
     async def get_books(
             self,
             limit: int = 10,
-            cursor: Optional[UUID] = None,
+            offset: int = 0,  # 2. Повертаємо offset замість cursor
             status: Optional[BookStatus] = None,
             author: Optional[str] = None
     ) -> List[BookResponse]:
@@ -21,22 +21,23 @@ class BookService:
 
         books = await self.repo.get_all(
             limit=limit,
-            cursor=cursor,
+            offset=offset,  # Передаємо offset в репозиторій
             status=status_val,
             author=author
         )
         return [BookResponse.model_validate(b) for b in books]
 
-    async def get_book_by_id(self, book_id: UUID) -> Optional[BookResponse]:
+    # 3. book_id тепер має тип str (рядок), а не UUID
+    async def get_book_by_id(self, book_id: str) -> Optional[BookResponse]:
         book = await self.repo.get_by_id(book_id)
         if book:
             return BookResponse.model_validate(book)
         return None
 
     async def create_book(self, book_in: BookCreate) -> BookResponse:
-        # model_dump перетворює Pydantic схему у словник для SQLAlchemy
         created_book = await self.repo.create(book_in.model_dump())
         return BookResponse.model_validate(created_book)
 
-    async def delete_book(self, book_id: UUID) -> bool:
+    # 3. book_id тепер має тип str
+    async def delete_book(self, book_id: str) -> bool:
         return await self.repo.delete(book_id)

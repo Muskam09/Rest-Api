@@ -2,41 +2,48 @@ from fastapi.testclient import TestClient
 from main import app
 
 
-def test_cursor_pagination_and_lifecycle():
+def test_mongodb_book_lifecycle():
+    # Використовуємо 'with', щоб база Mongo не відключалася між запитами (відпрацьовує lifespan)
     with TestClient(app) as client:
-        # 1. Створюємо ДВІ книги для перевірки пагінації
-        book1_res = client.post(
+        # 1. Тестуємо створення книги (POST)
+        create_response = client.post(
             "/books/",
-            json={"title": "Book A", "author": "Author A", "year": 2020, "status": "available in the library"}
+            json={
+                "title": "MongoDB: The Definitive Guide",
+                "author": "Shannon Bradshaw",
+                "year": 2019,
+                "status": "available in the library"
+            }
         )
-        book2_res = client.post(
-            "/books/",
-            json={"title": "Book B", "author": "Author B", "year": 2021, "status": "available in the library"}
-        )
+        assert create_response.status_code == 201
+        created_book = create_response.json()
 
-        assert book1_res.status_code == 201
-        assert book2_res.status_code == 201
+        assert "id" in created_book
+        assert created_book["title"] == "MongoDB: The Definitive Guide"
 
-        # Оскільки ми сортуємо по UUID, ми не знаємо точно, яка буде першою.
-        # Тому просто витягуємо першу сторінку з лімітом 1
-        page1_res = client.get("/books/?limit=1")
-        assert page1_res.status_code == 200
-        page1_data = page1_res.json()
-        assert len(page1_data) == 1
+        book_id = created_book["id"]
 
-        # Беремо ID з першої сторінки, щоб використати як КУРСОР
-        first_book_id = page1_data[0]["id"]
+        # Перевіряємо, що ID тепер є строкою і має довжину 24 символи (стандарт ObjectId в Mongo)
+        assert isinstance(book_id, str)
+        assert len(book_id) == 24
 
-        # 2. Робимо запит за другою сторінкою, передаючи cursor
-        page2_res = client.get(f"/books/?limit=1&cursor={first_book_id}")
-        assert page2_res.status_code == 200
-        page2_data = page2_res.json()
-        assert len(page2_data) == 1
+        # 2. Тестуємо отримання книги по ID (GET)
+        get_response = client.get(f"/books/{book_id}")
+        assert get_response.status_code == 200
+        assert get_response.json()["id"] == book_id
 
-        # Перевіряємо, що це дійсно ІНША книга (id не співпадають)
-        second_book_id = page2_data[0]["id"]
-        assert first_book_id != second_book_id
+        # 3. Тестуємо отримання списку з Limit-Offset пагінацією (GET)
+        # Згідно з завданням Лаб 5 ми повертаємося до Limit-Offset
+        list_response = client.get("/books/?limit=5&offset=0")
+        assert list_response.status_code == 200
+        assert isinstance(list_response.json(), list)
+        assert len(list_response.json()) >= 1
 
-        # 3. Видаляємо тестові дані
-        client.delete(f"/books/{first_book_id}")
-        client.delete(f"/books/{second_book_id}")
+        # 4. Тестуємо ідемпотентне видалення (DELETE)
+        # Перший запит - успішно видаляє (204)
+        delete_response_1 = client.delete(f"/books/{book_id}")
+        assert delete_response_1.status_code == 204
+
+        # Другий запит - ресурсу вже немає (404)
+        delete_response_2 = client.delete(f"/books/{book_id}")
+        assert delete_response_2.status_code == 404
