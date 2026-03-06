@@ -10,3 +10,4 @@ Flask
 Flask-RESTful
 flasgger
 pymongo
+gunicorn

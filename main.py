@@ -161,7 +161,7 @@ class BookResource(Resource):
         return {"message": "Book not found"}, 404
 
 
-# Реєстрація ресурсів [cite: 370]
+# Реєстрація ресурсів
 api.add_resource(BookListResource, '/books')
 api.add_resource(BookResource, '/books/<string:book_id>')
 
