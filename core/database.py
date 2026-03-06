@@ -1,13 +1,12 @@
 import os
-import motor.motor_asyncio
+from pymongo import MongoClient
 
+# Беремо URL з environment variables, або дефолтний для локального тесту
 MONGO_URL = os.getenv("MONGO_URL", "mongodb://mongo_admin:password@localhost:27017")
 
-# Ініціалізація Mongo клієнта
-client = motor.motor_asyncio.AsyncIOMotorClient(MONGO_URL)
-# Вибираємо базу даних (якщо її немає - Mongo створить її автоматично при першому записі)
-db = client.books
+# Ініціалізація синхронного Mongo клієнта
+client = MongoClient(MONGO_URL)
 
-# Dependency Injection
-async def get_db():
-    yield db
+# Вибираємо базу даних 'books' та колекцію 'books'
+db = client.books
+collection = db.books

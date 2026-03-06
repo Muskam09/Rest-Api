@@ -1,49 +1,55 @@
-from fastapi.testclient import TestClient
+import pytest
 from main import app
 
 
-def test_mongodb_book_lifecycle():
-    # Використовуємо 'with', щоб база Mongo не відключалася між запитами (відпрацьовує lifespan)
-    with TestClient(app) as client:
-        # 1. Тестуємо створення книги (POST)
-        create_response = client.post(
-            "/books/",
-            json={
-                "title": "MongoDB: The Definitive Guide",
-                "author": "Shannon Bradshaw",
-                "year": 2019,
-                "status": "available in the library"
-            }
-        )
-        assert create_response.status_code == 201
-        created_book = create_response.json()
+# Фікстура (fixture) для створення тестового клієнта
+@pytest.fixture
+def client():
+    # Вмикаємо режим тестування у Flask
+    app.config['TESTING'] = True
+    with app.test_client() as client:
+        yield client
 
-        assert "id" in created_book
-        assert created_book["title"] == "MongoDB: The Definitive Guide"
 
-        book_id = created_book["id"]
+def test_swagger_documentation_is_accessible(client):
+    """Тестуємо, чи працює сторінка зі Swagger UI"""
+    response = client.get('/apidocs/')
+    assert response.status_code == 200
+    # Flasgger використовує swagger-ui як id та клас у своєму HTML
+    assert b"swagger-ui" in response.data
 
-        # Перевіряємо, що ID тепер є строкою і має довжину 24 символи (стандарт ObjectId в Mongo)
-        assert isinstance(book_id, str)
-        assert len(book_id) == 24
+def test_flask_book_lifecycle(client):
+    """Повний цикл: створення, отримання, лістинг та видалення книги"""
+    # 1. Створюємо книгу (POST)
+    new_book_data = {
+        "title": "Flask Web Development",
+        "author": "Miguel Grinberg",
+        "year": 2018
+    }
+    create_response = client.post('/books', json=new_book_data)
 
-        # 2. Тестуємо отримання книги по ID (GET)
-        get_response = client.get(f"/books/{book_id}")
-        assert get_response.status_code == 200
-        assert get_response.json()["id"] == book_id
+    assert create_response.status_code == 201
+    created_book = create_response.get_json()
+    assert "id" in created_book
+    assert created_book["title"] == "Flask Web Development"
 
-        # 3. Тестуємо отримання списку з Limit-Offset пагінацією (GET)
-        # Згідно з завданням Лаб 5 ми повертаємося до Limit-Offset
-        list_response = client.get("/books/?limit=5&offset=0")
-        assert list_response.status_code == 200
-        assert isinstance(list_response.json(), list)
-        assert len(list_response.json()) >= 1
+    book_id = created_book["id"]
 
-        # 4. Тестуємо ідемпотентне видалення (DELETE)
-        # Перший запит - успішно видаляє (204)
-        delete_response_1 = client.delete(f"/books/{book_id}")
-        assert delete_response_1.status_code == 204
+    # 2. Отримуємо конкретну книгу по ID (GET)
+    get_response = client.get(f'/books/{book_id}')
+    assert get_response.status_code == 200
+    assert get_response.get_json()["id"] == book_id
 
-        # Другий запит - ресурсу вже немає (404)
-        delete_response_2 = client.delete(f"/books/{book_id}")
-        assert delete_response_2.status_code == 404
+    # 3. Перевіряємо отримання списку з пагінацією (GET)
+    list_response = client.get('/books?limit=5&offset=0')
+    assert list_response.status_code == 200
+    assert isinstance(list_response.get_json(), list)
+    assert len(list_response.get_json()) >= 1
+
+    # 4. Видаляємо книгу (DELETE)
+    delete_response = client.delete(f'/books/{book_id}')
+    assert delete_response.status_code == 204
+
+    # 5. Перевіряємо, що книга дійсно видалена (GET -> 404)
+    get_deleted_response = client.get(f'/books/{book_id}')
+    assert get_deleted_response.status_code == 404

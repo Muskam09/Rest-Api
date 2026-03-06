@@ -6,3 +6,7 @@ motor
 pytest
 httpx
 pytest-asyncio
+Flask
+Flask-RESTful
+flasgger
+pymongo
