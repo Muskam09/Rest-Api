@@ -1,0 +1,322 @@
+---
+openapi: 3.1.0
+info:
+  title: Library REST API
+  description: API for library management with MongoDB and JWT Authentication
+  version: 4.0.0
+paths:
+  "/auth/login":
+    post:
+      tags:
+      - Authentication
+      summary: Login
+      operationId: login_auth_login_post
+      requestBody:
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              "$ref": "#/components/schemas/Body_login_auth_login_post"
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/HTTPValidationError"
+  "/auth/refresh":
+    post:
+      tags:
+      - Authentication
+      summary: Refresh Token
+      operationId: refresh_token_auth_refresh_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              "$ref": "#/components/schemas/RefreshTokenRequest"
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/HTTPValidationError"
+  "/books/":
+    get:
+      tags:
+      - Books
+      summary: Get Books
+      operationId: get_books_books__get
+#      security:
+#      - OAuth2PasswordBearer: []
+      parameters:
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          default: 10
+          title: Limit
+      - name: offset
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 0
+          default: 0
+          title: Offset
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  "$ref": "#/components/schemas/BookResponse"
+                title: Response Get Books Books  Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/HTTPValidationError"
+    post:
+      tags:
+      - Books
+      summary: Create Book
+      operationId: create_book_books__post
+#      security:
+#      - OAuth2PasswordBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              "$ref": "#/components/schemas/BookCreate"
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/BookResponse"
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/HTTPValidationError"
+  "/books/{book_id}":
+    get:
+      tags:
+      - Books
+      summary: Get Book
+      operationId: get_book_books__book_id__get
+#      security:
+#      - OAuth2PasswordBearer: []
+      parameters:
+      - name: book_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Book Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/BookResponse"
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/HTTPValidationError"
+    delete:
+      tags:
+      - Books
+      summary: Delete Book
+      operationId: delete_book_books__book_id__delete
+#      security:
+#      - OAuth2PasswordBearer: []
+      parameters:
+      - name: book_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Book Id
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/HTTPValidationError"
+components:
+  schemas:
+    Body_login_auth_login_post:
+      properties:
+        grant_type:
+          anyOf:
+          - type: string
+            pattern: password
+          - type: 'null'
+          title: Grant Type
+        username:
+          type: string
+          title: Username
+        password:
+          type: string
+          title: Password
+        scope:
+          type: string
+          title: Scope
+          default: ''
+        client_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Client Id
+        client_secret:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Client Secret
+      type: object
+      required:
+      - username
+      - password
+      title: Body_login_auth_login_post
+    BookCreate:
+      properties:
+        title:
+          type: string
+          minLength: 1
+          title: Title
+        author:
+          type: string
+          minLength: 1
+          title: Author
+        description:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Description
+        status:
+          allOf:
+          - "$ref": "#/components/schemas/BookStatus"
+          default: available in the library
+        year:
+          type: integer
+          exclusiveMinimum: 0
+          title: Year
+      type: object
+      required:
+      - title
+      - author
+      - year
+      title: BookCreate
+    BookResponse:
+      properties:
+        title:
+          type: string
+          minLength: 1
+          title: Title
+        author:
+          type: string
+          minLength: 1
+          title: Author
+        description:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Description
+        status:
+          allOf:
+          - "$ref": "#/components/schemas/BookStatus"
+          default: available in the library
+        year:
+          type: integer
+          exclusiveMinimum: 0
+          title: Year
+        _id:
+          type: string
+          title: " Id"
+      type: object
+      required:
+      - title
+      - author
+      - year
+      - _id
+      title: BookResponse
+    BookStatus:
+      type: string
+      enum:
+      - available in the library
+      - issued to someone
+      title: BookStatus
+    HTTPValidationError:
+      properties:
+        detail:
+          items:
+            "$ref": "#/components/schemas/ValidationError"
+          type: array
+          title: Detail
+      type: object
+      title: HTTPValidationError
+    RefreshTokenRequest:
+      properties:
+        refresh_token:
+          type: string
+          title: Refresh Token
+      type: object
+      required:
+      - refresh_token
+      title: RefreshTokenRequest
+    ValidationError:
+      properties:
+        loc:
+          items:
+            anyOf:
+            - type: string
+            - type: integer
+          type: array
+          title: Location
+        msg:
+          type: string
+          title: Message
+        type:
+          type: string
+          title: Error Type
+      type: object
+      required:
+      - loc
+      - msg
+      - type
+      title: ValidationError
+#  securitySchemes:
+#    OAuth2PasswordBearer:
+#      type: oauth2
+#      flows:
+#        password:
+#          scopes: {}
+#          tokenUrl: auth/login

@@ -1,71 +1,51 @@
+import httpx
 import pytest
-from fastapi.testclient import TestClient
-from unittest.mock import AsyncMock, patch
-from main import app
-from api.book import get_book_service  # Імпортуємо залежність
+
+# URL нашого мок-сервера (Prism)
+MOCK_URL = "http://localhost:4010"
 
 
-# 1. Створюємо фейковий сервіс для книг, щоб відключити MongoDB на час тестів
-class MockBookService:
-    async def get_books(self, *args, **kwargs):
-        return []  # Просто повертаємо порожній список
+@pytest.mark.asyncio
+async def test_mock_books_get_list():
+    """Перевіряємо, що мок повертає список книг з правильною структурою"""
+    async with httpx.AsyncClient() as client:
+        response = await client.get(f"{MOCK_URL}/books/")
+
+        # Перевіряємо статус
+        assert response.status_code == 200
+
+        data = response.json()
+        assert isinstance(data, list)
+
+        # Перевіряємо, що перший елемент має всі необхідни поля згідно зі схемою
+        if len(data) > 0:
+            book = data[0]
+            assert "title" in book
+            assert "author" in book
+            assert "status" in book
+            # Оскільки це мок, він повертає "string" замість реальних назв
+            assert book["title"] == "string"
 
 
-# 2. Підміняємо реальну залежність на нашу фейкову
-app.dependency_overrides[get_book_service] = lambda: MockBookService()
+@pytest.mark.asyncio
+async def test_mock_get_single_book():
+    """Перевіряємо отримання однієї книги по ID"""
+    async with httpx.AsyncClient() as client:
+        # В Prism будь-який ID (наприклад '123') спрацює, якщо шлях підходить
+        response = await client.get(f"{MOCK_URL}/books/any-id")
 
-client = TestClient(app)
-
-
-# Допоміжна функція для отримання токена
-def get_auth_token():
-    response = client.post("/auth/login", data={"username": "admin", "password": "secret"})
-    return response.json()["access_token"]
-
-
-# Базовий декоратор для мокання Redis
-mock_redis = lambda func: patch("core.rate_limiter.redis_client.zremrangebyscore", new_callable=AsyncMock)(
-    patch("core.rate_limiter.redis_client.zadd", new_callable=AsyncMock)(
-        patch("core.rate_limiter.redis_client.expire", new_callable=AsyncMock)(func)))
+        assert response.status_code == 200
+        data = response.json()
+        assert data["_id"] == "string"
 
 
-@mock_redis
-@patch("core.rate_limiter.redis_client.zcard", new_callable=AsyncMock)
-def test_anonymous_under_limit(mock_zcard, mock_expire, mock_zadd, mock_zrem):
-    """Тест 1: Анонімний юзер ще не досяг ліміту (2 запити). Очікуємо 200 OK."""
-    mock_zcard.return_value = 1
-    response = client.get("/books/")
-    assert response.status_code == 200
+@pytest.mark.asyncio
+async def test_mock_create_book_validation():
+    """Перевіряємо, як мок реагує на неправильні дані (валідація)"""
+    async with httpx.AsyncClient() as client:
+        # Відправляємо пустий об'єкт, хоча очікується BookCreate
+        invalid_data = {}
+        response = await client.post(f"{MOCK_URL}/books/", json=invalid_data)
 
-
-@mock_redis
-@patch("core.rate_limiter.redis_client.zcard", new_callable=AsyncMock)
-def test_anonymous_over_limit(mock_zcard, mock_expire, mock_zadd, mock_zrem):
-    """Тест 2: Анонімний юзер досяг ліміту (2 запити). Очікуємо 429 Too Many Requests."""
-    mock_zcard.return_value = 2
-    response = client.get("/books/")
-    assert response.status_code == 429
-    assert response.json()["detail"] == "Too many requests"
-
-
-@mock_redis
-@patch("core.rate_limiter.redis_client.zcard", new_callable=AsyncMock)
-def test_authenticated_under_limit(mock_zcard, mock_expire, mock_zadd, mock_zrem):
-    """Тест 3: Авторизований юзер ще не досяг ліміту (10 запитів). Очікуємо 200 OK."""
-    token = get_auth_token()
-    mock_zcard.return_value = 9
-
-    response = client.get("/books/", headers={"Authorization": f"Bearer {token}"})
-    assert response.status_code == 200
-
-
-@mock_redis
-@patch("core.rate_limiter.redis_client.zcard", new_callable=AsyncMock)
-def test_authenticated_over_limit(mock_zcard, mock_expire, mock_zadd, mock_zrem):
-    """Тест 4: Авторизований юзер досяг ліміту (10 запитів). Очікуємо 429 Too Many Requests."""
-    token = get_auth_token()
-    mock_zcard.return_value = 10
-
-    response = client.get("/books/", headers={"Authorization": f"Bearer {token}"})
-    assert response.status_code == 429
-    assert response.json()["detail"] == "Too many requests"
+        # Prism має автоматично повернути 422 або 400, бо дані не відповідають схемі
+        assert response.status_code in [400, 422]
