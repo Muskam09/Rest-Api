@@ -1,55 +1,77 @@
-import pytest
+from fastapi.testclient import TestClient
 from main import app
 
+# Створюємо тестовий клієнт
+client = TestClient(app)
 
-# Фікстура (fixture) для створення тестового клієнта
-@pytest.fixture
-def client():
-    # Вмикаємо режим тестування у Flask
-    app.config['TESTING'] = True
-    with app.test_client() as client:
-        yield client
-
-
-def test_swagger_documentation_is_accessible(client):
-    """Тестуємо, чи працює сторінка зі Swagger UI"""
-    response = client.get('/apidocs/')
+def test_login_success():
+    """Тест 1: Успішна авторизація з правильними даними"""
+    response = client.post(
+        "/auth/login", 
+        data={"username": "admin", "password": "secret"}
+    )
     assert response.status_code == 200
-    # Flasgger використовує swagger-ui як id та клас у своєму HTML
-    assert b"swagger-ui" in response.data
+    data = response.json()
+    assert "access_token" in data
+    assert "refresh_token" in data
+    assert data["token_type"] == "bearer"
 
-def test_flask_book_lifecycle(client):
-    """Повний цикл: створення, отримання, лістинг та видалення книги"""
-    # 1. Створюємо книгу (POST)
-    new_book_data = {
-        "title": "Flask Web Development",
-        "author": "Miguel Grinberg",
-        "year": 2018
-    }
-    create_response = client.post('/books', json=new_book_data)
+def test_login_failure():
+    """Тест 2: Відмова при неправильному паролі"""
+    response = client.post(
+        "/auth/login", 
+        data={"username": "admin", "password": "wrong_password"}
+    )
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Incorrect username or password"
 
-    assert create_response.status_code == 201
-    created_book = create_response.get_json()
-    assert "id" in created_book
-    assert created_book["title"] == "Flask Web Development"
+def test_protected_route_without_token():
+    """Тест 3: Спроба доступу до захищеного роута без токена"""
+    response = client.get("/books/")
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Not authenticated"
 
-    book_id = created_book["id"]
+def test_protected_route_with_token():
+    """Тест 4: Успішний доступ до захищеного роута з валідним токеном"""
+    # 1. Спочатку логінимось, щоб отримати токен
+    login_response = client.post(
+        "/auth/login", 
+        data={"username": "admin", "password": "secret"}
+    )
+    access_token = login_response.json()["access_token"]
 
-    # 2. Отримуємо конкретну книгу по ID (GET)
-    get_response = client.get(f'/books/{book_id}')
-    assert get_response.status_code == 200
-    assert get_response.get_json()["id"] == book_id
+    # 2. Робимо запит до книг, передаючи токен у заголовку Authorization
+    response = client.get(
+        "/books/", 
+        headers={"Authorization": f"Bearer {access_token}"}
+    )
+    assert response.status_code == 200
+    assert isinstance(response.json(), list)
 
-    # 3. Перевіряємо отримання списку з пагінацією (GET)
-    list_response = client.get('/books?limit=5&offset=0')
-    assert list_response.status_code == 200
-    assert isinstance(list_response.get_json(), list)
-    assert len(list_response.get_json()) >= 1
+def test_refresh_token_flow():
+    """Тест 5: Перевірка роботи Refresh токена"""
+    # 1. Отримуємо refresh_token
+    login_response = client.post(
+        "/auth/login", 
+        data={"username": "admin", "password": "secret"}
+    )
+    refresh_token = login_response.json()["refresh_token"]
 
-    # 4. Видаляємо книгу (DELETE)
-    delete_response = client.delete(f'/books/{book_id}')
-    assert delete_response.status_code == 204
+    # 2. Відправляємо refresh_token для отримання нового access_token
+    refresh_response = client.post(
+        "/auth/refresh", 
+        json={"refresh_token": refresh_token}
+    )
+    assert refresh_response.status_code == 200
+    data = refresh_response.json()
+    assert "access_token" in data
+    assert data["token_type"] == "bearer"
 
-    # 5. Перевіряємо, що книга дійсно видалена (GET -> 404)
-    get_deleted_response = client.get(f'/books/{book_id}')
-    assert get_deleted_response.status_code == 404
+def test_invalid_refresh_token():
+    """Тест 6: Відмова при спробі використати фейковий refresh токен"""
+    refresh_response = client.post(
+        "/auth/refresh", 
+        json={"refresh_token": "fake.jwt.token"}
+    )
+    assert refresh_response.status_code == 401
+    assert refresh_response.json()["detail"] == "Invalid token"
