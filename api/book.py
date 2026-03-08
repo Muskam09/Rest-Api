@@ -54,7 +54,7 @@ async def get_books(
     current_user: Optional[str] = Depends(get_optional_user) # Може бути None
 ):
     # Викликаємо лімітер. Якщо current_user == None, ліміт буде 2 запити/хв. Якщо авторизований — 10.
-    await rate_limit(request, current_user)
+#   await rate_limit(request, current_user)
     return await service.get_books(limit=limit, offset=offset)
 
 
@@ -66,7 +66,7 @@ async def create_book(
     current_user: str = Depends(get_current_user)  # Строга авторизація
 ):
     # Тут current_user гарантовано є, ліміт буде 10 запитів/хв
-    await rate_limit(request, current_user)
+#   await rate_limit(request, current_user)
     return await service.create_book(book_in)
 
 
@@ -77,7 +77,7 @@ async def get_book(
     service: BookService = Depends(get_book_service),
     current_user: Optional[str] = Depends(get_optional_user)
 ):
-    await rate_limit(request, current_user)
+#   await rate_limit(request, current_user)
     book = await service.get_book_by_id(book_id)
     if not book:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Book not found")
@@ -91,7 +91,7 @@ async def delete_book(
     service: BookService = Depends(get_book_service),
     current_user: str = Depends(get_current_user)
 ):
-    await rate_limit(request, current_user)
+#   await rate_limit(request, current_user)
     deleted = await service.delete_book(book_id)
     if not deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Book not found")

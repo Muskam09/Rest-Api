@@ -31,14 +31,15 @@ services:
     volumes:
       - .:/app
 
-  mock_api:
-    image: stoplight/prism:5
-    container_name: library_mock
+  locust:
+    image: locustio/locust
+    container_name: library_load_tester
     ports:
-      - "4010:4010"
+      - "8089:8089"
     volumes:
-      - ./openapi.yaml:/app/openapi.yaml:ro
-    command: mock /app/openapi.yaml -h 0.0.0.0
+      - ./locust:/mnt/locust
+    # Вказуємо файл тесту та адресу нашого API всередині мережі Docker
+    command: -f /mnt/locust/locustfile.py --host http://api:8000
     depends_on:
       - api
 
