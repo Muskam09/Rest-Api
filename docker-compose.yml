@@ -12,6 +12,12 @@ services:
     volumes:
       - mongo_data:/data/db
 
+  redis_cache:
+    image: redis:latest
+    container_name: library_redis
+    ports:
+      - "6379:6379"
+
   api:
     build: .
     container_name: library_api
@@ -19,6 +25,7 @@ services:
       - "8000:8000"
     environment:
       - MONGO_URL=mongodb://mongo_admin:password@mongo_db:27017
+      - REDIS_URL=redis://redis_cache:6379/0
     depends_on:
       - mongo_db
     volumes:
