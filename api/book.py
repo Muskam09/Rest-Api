@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, Query, Depends, status
 from typing import List, Optional
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
-from schemas.book import BookCreate, BookResponse, BookStatus
+from schemas.book import BookCreate, BookResponse, BookStatus, PaginatedBookResponse
 from services.book import BookService
 from core.database import get_db
 
@@ -12,7 +12,7 @@ def get_book_service(db: AsyncIOMotorDatabase = Depends(get_db)) -> BookService:
     return BookService(db)
 
 # Додаємо response_model_by_alias=False
-@router.get("/", response_model=List[BookResponse], status_code=status.HTTP_200_OK, response_model_by_alias=False)
+@router.get("/", response_model=PaginatedBookResponse, response_model_by_alias=False)
 async def get_books(
     limit: int = Query(10, ge=1, description="Number of records to return"),
     offset: int = Query(0, ge=0, description="Number of records to skip"),

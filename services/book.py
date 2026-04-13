@@ -1,7 +1,7 @@
 from typing import List, Optional
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
-from schemas.book import BookCreate, BookResponse, BookStatus
+from schemas.book import BookCreate, BookResponse, BookStatus, PaginatedBookResponse
 from repository.book import BookRepository
 
 
@@ -16,16 +16,25 @@ class BookService:
             offset: int = 0,  # 2. Повертаємо offset замість cursor
             status: Optional[BookStatus] = None,
             author: Optional[str] = None
-    ) -> List[BookResponse]:
+    ) -> PaginatedBookResponse:
         status_val = status.value if status else None
 
-        books = await self.repo.get_all(
+        books_data, total_count = await self.repo.get_all(
             limit=limit,
-            offset=offset,  # Передаємо offset в репозиторій
+            offset=offset,
             status=status_val,
             author=author
         )
-        return [BookResponse.model_validate(b) for b in books]
+        validated_books = [BookResponse.model_validate(b) for b in books_data]
+
+        return PaginatedBookResponse(
+            data=validated_books,
+            meta={
+                "total_items": total_count,
+                "limit": limit,
+                "offset": offset
+            }
+        )
 
     # 3. book_id тепер має тип str (рядок), а не UUID
     async def get_book_by_id(self, book_id: str) -> Optional[BookResponse]:

@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field, ConfigDict
-from typing import Optional
+from typing import Optional, List
 from enum import Enum
 from pydantic_mongo import ObjectIdField
 
@@ -27,3 +27,14 @@ class BookResponse(BookCreate):
 
     # Дозволяємо Pydantic шукати поля за псевдонімами
     model_config = ConfigDict(populate_by_name=True)
+
+# Схема для самих метаданих
+class PaginationMeta(BaseModel):
+    total_items: int
+    limit: int
+    offset: int
+
+# Схема-обгортка для фінальної відповіді
+class PaginatedBookResponse(BaseModel):
+    data: List[BookResponse]
+    meta: PaginationMeta

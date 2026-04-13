@@ -27,7 +27,9 @@ class BookRepository:
 
         # Асинхронно вивантажуємо дані з курсора в список
         books = await cursor.to_list(length=limit)
-        return books
+        # ДОДАНО: Рахуємо загальну кількість документів, ЩО ПІДХОДЯТЬ ПІД ФІЛЬТР
+        total_count = await self.collection.count_documents(query)
+        return books, total_count
 
     async def get_by_id(self, book_id: str) -> Optional[dict]:
         try:
