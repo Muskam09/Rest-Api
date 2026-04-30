@@ -30,8 +30,22 @@ def test_full_book_lifecycle():
         # 3. Тестуємо отримання списку з пагінацією Limit-Offset (GET)
         list_response = client.get("/books/?limit=5&offset=0")
         assert list_response.status_code == 200
-        assert isinstance(list_response.json(), list)
-        assert len(list_response.json()) >= 1
+        
+        # Отримуємо новий JSON-об'єкт
+        response_json = list_response.json()
+        
+        # Перевіряємо, що структура правильна (є data та meta)
+        assert "data" in response_json
+        assert "meta" in response_json
+        
+        # Перевіряємо масив книг
+        assert isinstance(response_json["data"], list)
+        assert len(response_json["data"]) >= 1
+        
+        # Перевіряємо правильність метаданих
+        assert response_json["meta"]["limit"] == 5
+        assert response_json["meta"]["offset"] == 0
+        assert response_json["meta"]["total_items"] >= 1
 
         # 4. Тестуємо ідемпотентне видалення (DELETE)
         # Перший запит - успішно видаляє (204)
