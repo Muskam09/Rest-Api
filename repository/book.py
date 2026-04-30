@@ -1,6 +1,6 @@
-from typing import List, Optional
+from typing import List, Optional, Tuple
 from uuid import UUID
-from sqlalchemy import select, delete
+from sqlalchemy import select, delete, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from models.book import Book
 
@@ -15,23 +15,35 @@ class BookRepository:
         status: Optional[str] = None,
         author: Optional[str] = None,
         sort_by: Optional[str] = None
-    ) -> List[Book]:
+    ) -> Tuple[List[Book], int]:
         query = select(Book)
+        count_query = select(func.count()).select_from(Book)
 
+        #фільтри ОДНОЧАСНО до обох запитів
         if status:
             query = query.where(Book.status == status)
+            count_query = count_query.where(Book.status == status)
         if author:
             query = query.where(Book.author == author)
+            count_query = count_query.where(Book.author == author)
+
+        #запит на підрахунок загальної кількості (до накладання лімітів)
+        count_result = await self.session.execute(count_query)
+        total_count = count_result.scalar() or 0
 
         if sort_by == "title":
             query = query.order_by(Book.title)
         elif sort_by == "year":
             query = query.order_by(Book.year)
 
+        # пагінацію
         query = query.limit(limit).offset(offset)
 
+        #запит на отримання даних
         result = await self.session.execute(query)
-        return list(result.scalars().all())
+        books = list(result.scalars().all())
+
+        return books, total_count
 
     async def get_by_id(self, book_id: UUID) -> Optional[Book]:
         query = select(Book).where(Book.id == book_id)

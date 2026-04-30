@@ -2,9 +2,8 @@ from typing import List, Optional
 from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from schemas.book import BookCreate, BookResponse, BookStatus
+from schemas.book import BookCreate, BookResponse, BookStatus, PaginatedBookResponse, PaginationMeta
 from repository.book import BookRepository
-
 
 class BookService:
     def __init__(self, session: AsyncSession):
@@ -17,19 +16,30 @@ class BookService:
             status: Optional[BookStatus] = None,
             author: Optional[str] = None,
             sort_by: Optional[str] = None
-    ) -> List[BookResponse]:
-        # Витягуємо строкове значення з Enum для передачі в БД
+    ) -> PaginatedBookResponse:
         status_val = status.value if status else None
 
-        books = await self.repo.get_all(
+        # Отримуємо і книги, і їх загальну кількість
+        books, total_count = await self.repo.get_all(
             limit=limit,
             offset=offset,
             status=status_val,
             author=author,
             sort_by=sort_by
         )
-        # model_validate автоматично перетворює ORM об'єкт у Pydantic схему
-        return [BookResponse.model_validate(b) for b in books]
+        
+        # Валідуємо книги
+        validated_books = [BookResponse.model_validate(b) for b in books]
+
+        # Повертаємо об'єкт з даними та метаданими
+        return PaginatedBookResponse(
+            data=validated_books,
+            meta=PaginationMeta(
+                total_items=total_count,
+                limit=limit,
+                offset=offset
+            )
+        )
 
     async def get_book_by_id(self, book_id: UUID) -> Optional[BookResponse]:
         book = await self.repo.get_by_id(book_id)
@@ -38,7 +48,6 @@ class BookService:
         return None
 
     async def create_book(self, book_in: BookCreate) -> BookResponse:
-        # model_dump перетворює Pydantic схему у словник для SQLAlchemy
         created_book = await self.repo.create(book_in.model_dump())
         return BookResponse.model_validate(created_book)
 

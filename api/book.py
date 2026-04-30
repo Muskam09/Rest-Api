@@ -3,17 +3,16 @@ from typing import List, Optional
 from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from schemas.book import BookCreate, BookResponse, BookStatus
+from schemas.book import BookCreate, BookResponse, BookStatus, PaginatedBookResponse
 from services.book import BookService
 from core.database import get_db
 
 router = APIRouter(prefix="/books", tags=["Books"])
 
-# Допоміжна функція-залежність для створення сервісу з сесією БД
 def get_book_service(session: AsyncSession = Depends(get_db)) -> BookService:
     return BookService(session)
 
-@router.get("/", response_model=List[BookResponse], status_code=status.HTTP_200_OK)
+@router.get("/", response_model=PaginatedBookResponse, status_code=status.HTTP_200_OK)
 async def get_books(
     limit: int = Query(10, ge=1, description="Number of records to return"),
     offset: int = Query(0, ge=0, description="Number of records to skip"),
@@ -22,7 +21,7 @@ async def get_books(
     sort_by: Optional[str] = Query(None, description="Sort by (title or year)"),
     service: BookService = Depends(get_book_service)
 ):
-    """Get list of books with filtering, sorting, and Limit-Offset pagination."""
+    """Get list of books with filtering, sorting, and Limit-Offset pagination (with metadata)."""
     return await service.get_books(
         limit=limit,
         offset=offset,
