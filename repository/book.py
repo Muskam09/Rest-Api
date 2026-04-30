@@ -1,6 +1,6 @@
-from typing import List, Optional
+from typing import List, Optional, Tuple
 from uuid import UUID
-from sqlalchemy import select, delete
+from sqlalchemy import select, delete, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from models.book import Book
 
@@ -14,25 +14,36 @@ class BookRepository:
         cursor: Optional[UUID] = None,
         status: Optional[str] = None,
         author: Optional[str] = None
-    ) -> List[Book]:
-        # Для курсорної пагінації базове сортування має бути незмінним (наприклад, по ID)
+    ) -> Tuple[List[Book], int]:
+        
+        # 1. Запит для підрахунку загальної кількості
+        count_query = select(func.count()).select_from(Book)
+        if status:
+            count_query = count_query.where(Book.status == status)
+        if author:
+            count_query = count_query.where(Book.author == author)
+            
+        count_result = await self.session.execute(count_query)
+        total_count = count_result.scalar() or 0
+
+        # 2. Запит для отримання даних з курсором
         query = select(Book).order_by(Book.id)
 
-        # Фільтрація по статусу та автору
         if status:
             query = query.where(Book.status == status)
         if author:
             query = query.where(Book.author == author)
 
-        # Логіка КУРСОРУ: беремо тільки ті записи, id яких "більший" за курсор
+        # Логіка КУРСОРУ
         if cursor:
             query = query.where(Book.id > cursor)
 
-        # Ліміт залишається
         query = query.limit(limit)
 
         result = await self.session.execute(query)
-        return list(result.scalars().all())
+        books = list(result.scalars().all())
+
+        return books, total_count
 
     async def get_by_id(self, book_id: UUID) -> Optional[Book]:
         query = select(Book).where(Book.id == book_id)

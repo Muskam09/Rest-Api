@@ -1,13 +1,11 @@
 from pydantic import BaseModel, Field, ConfigDict
-from typing import Optional
+from typing import Optional, List
 from enum import Enum
 from uuid import UUID
-
 
 class BookStatus(str, Enum):
     available = "available in the library"
     issued = "issued to someone"
-
 
 class BookCreate(BaseModel):
     title: str = Field(..., min_length=1, description="Title of the book")
@@ -16,12 +14,17 @@ class BookCreate(BaseModel):
     status: BookStatus = Field(default=BookStatus.available, description="Book status")
     year: int = Field(..., gt=0, description="Year of manufacture")
 
-    # Змушуємо Pydantic віддавати статус як звичайний рядок (для БД)
     model_config = ConfigDict(use_enum_values=True)
-
 
 class BookResponse(BookCreate):
     id: UUID
-
-    # Головний фікс: дозволяємо Pydantic читати дані з об'єктів SQLAlchemy
     model_config = ConfigDict(from_attributes=True)
+
+class CursorPaginationMeta(BaseModel):
+    total_items: int
+    limit: int
+    next_cursor: Optional[UUID] = None  # ID останнього елемента на цій сторінці
+
+class CursorPaginatedBookResponse(BaseModel):
+    data: List[BookResponse]
+    meta: CursorPaginationMeta
