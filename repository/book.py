@@ -1,25 +1,49 @@
-from typing import List, Dict, Optional
-from uuid import UUID
-from models.book import books_db
+from typing import List, Optional, Tuple
+from motor.motor_asyncio import AsyncIOMotorDatabase
+from bson import ObjectId
 
 class BookRepository:
-    async def get_all(self) -> List[Dict]:
-        return books_db
+    def __init__(self, db: AsyncIOMotorDatabase):
+        self.collection = db.books
 
-    async def get_by_id(self, book_id: UUID) -> Optional[Dict]:
-        for book in books_db:
-            if book["id"] == book_id:
-                return book
-        return None
+    async def get_all(
+            self,
+            limit: int = 10,
+            offset: int = 0,
+            status: Optional[str] = None,
+            author: Optional[str] = None
+    ) -> Tuple[List[dict], int]:
+        query = {}
+        if status:
+            query["status"] = status
+        if author:
+            query["author"] = author
 
-    async def create(self, book_data: Dict) -> Dict:
-        books_db.append(book_data)
+        # 1. Рахуємо загальну кількість документів у Mongo
+        total_count = await self.collection.count_documents(query)
+
+        # 2. Витягуємо самі дані
+        cursor = self.collection.find(query).skip(offset).limit(limit)
+        books = await cursor.to_list(length=limit)
+        
+        return books, total_count
+
+    async def get_by_id(self, book_id: str) -> Optional[dict]:
+        try:
+            obj_id = ObjectId(book_id)
+        except Exception:
+            return None
+        return await self.collection.find_one({"_id": obj_id})
+
+    async def create(self, book_data: dict) -> dict:
+        result = await self.collection.insert_one(book_data)
+        book_data["_id"] = result.inserted_id
         return book_data
 
-    async def delete(self, book_id: UUID) -> bool:
-        # Шукаємо книгу за ID та видаляємо
-        for i, book in enumerate(books_db):
-            if book["id"] == book_id:
-                del books_db[i]
-                return True # Успішно видалено
-        return False # Книгу не знайдено
+    async def delete(self, book_id: str) -> bool:
+        try:
+            obj_id = ObjectId(book_id)
+        except Exception:
+            return False
+        result = await self.collection.delete_one({"_id": obj_id})
+        return result.deleted_count > 0

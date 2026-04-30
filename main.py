@@ -3,8 +3,8 @@ from api.book import router as book_router
 
 app = FastAPI(
     title="Library REST API",
-    description="API для управління бібліотекою",
-    version="1.0.0"
+    description="API for library management with MongoDB",
+    version="3.0.0"
 )
 
 # Підключаємо наші ендпоінти
