@@ -1,32 +1,44 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
-from pydantic import BaseModel
+from motor.motor_asyncio import AsyncIOMotorDatabase
 import jwt
 
+from core.database import get_db
 from core.security import (
-    verify_password, create_access_token, create_refresh_token,
-    get_password_hash, SECRET_KEY, ALGORITHM
+    get_password_hash, verify_password,
+    create_access_token, create_refresh_token,
+    SECRET_KEY, ALGORITHM
 )
+from schemas.user import UserCreate, Token, TokenRefreshRequest
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
-# Фейкова база користувачів (пароль: "secret")
-fake_users_db = {
-    "admin": {
-        "username": "admin",
-        "hashed_password": get_password_hash("secret")
+@router.post("/register", status_code=status.HTTP_201_CREATED)
+async def register_user(user: UserCreate, db: AsyncIOMotorDatabase = Depends(get_db)):
+    # Перевіряємо, чи існує користувач з таким логіном
+    existing_user = await db.users.find_one({"username": user.username})
+    if existing_user:
+        raise HTTPException(status_code=400, detail="Username already registered")
+
+    # Зберігаємо хеш замість відкритого пароля
+    hashed_password = get_password_hash(user.password)
+    new_user = {
+        "username": user.username,
+        "hashed_password": hashed_password
     }
-}
+
+    await db.users.insert_one(new_user)
+    return {"message": "User created successfully"}
 
 
-class RefreshTokenRequest(BaseModel):
-    refresh_token: str
-
-
-@router.post("/login")
-async def login(form_data: OAuth2PasswordRequestForm = Depends()):
-    # Перевіряємо, чи існує користувач і чи співпадає пароль
-    user = fake_users_db.get(form_data.username)
+@router.post("/login", response_model=Token)
+async def login_for_access_token(
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    db: AsyncIOMotorDatabase = Depends(get_db)
+):
+    # OAuth2PasswordRequestForm автоматично бере дані з форми Swagger (кнопка Authorize)
+    user = await db.users.find_one({"username": form_data.username})
+    
     if not user or not verify_password(form_data.password, user["hashed_password"]):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -45,23 +57,37 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
     }
 
 
-@router.post("/refresh")
-async def refresh_token(request: RefreshTokenRequest):
+@router.post("/refresh", response_model=Token)
+async def refresh_access_token(
+    body: TokenRefreshRequest, 
+    db: AsyncIOMotorDatabase = Depends(get_db)
+):
     try:
-        # Декодуємо refresh токен
-        payload = jwt.decode(request.refresh_token, SECRET_KEY, algorithms=[ALGORITHM])
+        # Декодуємо старий refresh токен
+        payload = jwt.decode(body.refresh_token, SECRET_KEY, algorithms=[ALGORITHM])
         username: str = payload.get("sub")
         token_type: str = payload.get("type")
 
-        # Перевіряємо, чи це дійсно refresh токен
+        # Сувора перевірка: чи це дійсно refresh токен
         if username is None or token_type != "refresh":
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+            raise HTTPException(status_code=401, detail="Invalid refresh token type")
 
-        # Якщо все ок, генеруємо новий access токен
+        # Перевіряємо, чи користувач досі існує в базі
+        user = await db.users.find_one({"username": username})
+        if not user:
+            raise HTTPException(status_code=401, detail="User not found")
+
+        # Видаємо нову пару (Refresh Token Rotation)
         new_access_token = create_access_token(data={"sub": username})
-        return {"access_token": new_access_token, "token_type": "bearer"}
+        new_refresh_token = create_refresh_token(data={"sub": username})
+
+        return {
+            "access_token": new_access_token,
+            "refresh_token": new_refresh_token,
+            "token_type": "bearer"
+        }
 
     except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Refresh token expired")
+        raise HTTPException(status_code=401, detail="Refresh token expired. Please log in again.")
     except jwt.InvalidTokenError:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+        raise HTTPException(status_code=401, detail="Invalid refresh token")

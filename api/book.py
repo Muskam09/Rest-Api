@@ -12,7 +12,7 @@ from core.security import SECRET_KEY, ALGORITHM
 router = APIRouter(prefix="/books", tags=["Books"])
 
 # Вказуємо FastAPI, куди Swagger має відправляти логін і пароль для отримання токена
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
 
 # перевіряє валідність JWT токена
