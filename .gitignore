@@ -1,3 +1,10 @@
 __pycache__/
  .pytest_cache/
  venv/
+openapi.json
+.idea/.gitignore
+.idea/misc.xml
+.idea/modules.xml
+.idea/Rest-Api.iml
+.idea/vcs.xml
+.idea/inspectionProfiles/profiles_settings.xml
