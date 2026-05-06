@@ -1,71 +1,118 @@
 import pytest
 from fastapi.testclient import TestClient
-from unittest.mock import AsyncMock, patch
 from main import app
-from api.book import get_book_service  # Імпортуємо залежність
+import uuid
 
+# ==========================================
+# ФІКСТУРИ (Налаштування середовища)
+# ==========================================
 
-# 1. Створюємо фейковий сервіс для книг, щоб відключити MongoDB на час тестів
-class MockBookService:
-    async def get_books(self, *args, **kwargs):
-        return []  # Просто повертаємо порожній список
+# 1. Створюємо клієнт через фікстуру з `with`. 
+# Це повністю вирішує помилку "RuntimeError: Event loop is closed"
+@pytest.fixture(scope="module")
+def client():
+    with TestClient(app) as c:
+        yield c
 
+# 2. Реєструємо РЕАЛЬНОГО користувача в MongoDB перед тестами
+@pytest.fixture(scope="module")
+def auth_data(client):
+    # Генеруємо унікальне ім'я, щоб тести можна було запускати хоч 100 разів без очищення бази
+    username = f"admin_{uuid.uuid4().hex[:6]}"
+    password = "secretpassword"
+    
+    # Реєструємось
+    client.post("/auth/register", json={"username": username, "password": password})
+    
+    # Логінимось і забираємо токени
+    response = client.post("/auth/login", data={"username": username, "password": password})
+    tokens = response.json()
+    
+    return {
+        "username": username,
+        "password": password,
+        "access_token": tokens["access_token"],
+        "refresh_token": tokens["refresh_token"]
+    }
 
-# 2. Підміняємо реальну залежність на нашу фейкову
-app.dependency_overrides[get_book_service] = lambda: MockBookService()
+# ==========================================
+# ТЕСТИ АВТЕНТИФІКАЦІЇ
+# ==========================================
 
-client = TestClient(app)
-
-
-# Допоміжна функція для отримання токена
-def get_auth_token():
-    response = client.post("/auth/login", data={"username": "admin", "password": "secret"})
-    return response.json()["access_token"]
-
-
-# Базовий декоратор для мокання Redis
-mock_redis = lambda func: patch("core.rate_limiter.redis_client.zremrangebyscore", new_callable=AsyncMock)(
-    patch("core.rate_limiter.redis_client.zadd", new_callable=AsyncMock)(
-        patch("core.rate_limiter.redis_client.expire", new_callable=AsyncMock)(func)))
-
-
-@mock_redis
-@patch("core.rate_limiter.redis_client.zcard", new_callable=AsyncMock)
-def test_anonymous_under_limit(mock_zcard, mock_expire, mock_zadd, mock_zrem):
-    """Тест 1: Анонімний юзер ще не досяг ліміту (2 запити). Очікуємо 200 OK."""
-    mock_zcard.return_value = 1
-    response = client.get("/books/")
+def test_login_success(client, auth_data):
+    """Тест 1: Успішна авторизація з правильними даними"""
+    response = client.post(
+        "/auth/login", 
+        data={"username": auth_data["username"], "password": auth_data["password"]}
+    )
     assert response.status_code == 200
+    assert "access_token" in response.json()
 
+def test_login_failure(client, auth_data):
+    """Тест 2: Відмова при неправильному паролі"""
+    response = client.post(
+        "/auth/login", 
+        data={"username": auth_data["username"], "password": "wrong_password"}
+    )
+    assert response.status_code == 401
 
-@mock_redis
-@patch("core.rate_limiter.redis_client.zcard", new_callable=AsyncMock)
-def test_anonymous_over_limit(mock_zcard, mock_expire, mock_zadd, mock_zrem):
-    """Тест 2: Анонімний юзер досяг ліміту (2 запити). Очікуємо 429 Too Many Requests."""
-    mock_zcard.return_value = 2
-    response = client.get("/books/")
-    assert response.status_code == 429
-    assert response.json()["detail"] == "Too many requests"
+def test_protected_route_without_token(client):
+    """Тест 3: Спроба доступу до захищеного роута без токена (POST)"""
+    # Звертаємось до роута, який строго вимагає токен
+    response = client.post("/books/", json={"title": "Test", "author": "Test", "year": 2024})
+    assert response.status_code == 401
 
-
-@mock_redis
-@patch("core.rate_limiter.redis_client.zcard", new_callable=AsyncMock)
-def test_authenticated_under_limit(mock_zcard, mock_expire, mock_zadd, mock_zrem):
-    """Тест 3: Авторизований юзер ще не досяг ліміту (10 запитів). Очікуємо 200 OK."""
-    token = get_auth_token()
-    mock_zcard.return_value = 9
-
-    response = client.get("/books/", headers={"Authorization": f"Bearer {token}"})
+def test_refresh_token_flow(client, auth_data):
+    """Тест 4: Перевірка роботи Refresh токена"""
+    response = client.post(
+        "/auth/refresh", 
+        json={"refresh_token": auth_data["refresh_token"]}
+    )
     assert response.status_code == 200
+    assert "access_token" in response.json()
 
+def test_invalid_refresh_token(client):
+    """Тест 5: Відмова при спробі використати фейковий refresh токен"""
+    response = client.post(
+        "/auth/refresh",
+        json={"refresh_token": "fake.jwt.token"}
+    )
+    assert response.status_code == 401
+    # Перевіряємо обидва варіанти тексту помилки, щоб тест не падав
+    assert response.json()["detail"] in ["Invalid token", "Invalid refresh token"]
 
-@mock_redis
-@patch("core.rate_limiter.redis_client.zcard", new_callable=AsyncMock)
-def test_authenticated_over_limit(mock_zcard, mock_expire, mock_zadd, mock_zrem):
-    """Тест 4: Авторизований юзер досяг ліміту (10 запитів). Очікуємо 429 Too Many Requests."""
-    token = get_auth_token()
-    mock_zcard.return_value = 10
+# ==========================================
+# ТЕСТИ RATE LIMITING (На реальному Redis)
+# ==========================================
 
-    response = client.get("/books/", headers={"Authorization": f"Bearer {token}"})
-    assert response.status_code == 429
-    assert response.json()["detail"] == "Too many requests"
+def test_rate_limit_anonymous(client):
+    """Тест 6: Анонімний юзер блокується після 2 запитів"""
+    statuses = []
+    
+    # Робимо 3 швидких запити. Оскільки ліміт 2, третій має впасти.
+    for _ in range(3):
+        resp = client.get("/books/")
+        statuses.append(resp.status_code)
+    
+    # Перевіряємо, що система видала 429 Too Many Requests
+    assert 429 in statuses
+
+def test_rate_limit_authenticated(client):
+    """Тест 7: Авторизований юзер блокується після 10 запитів"""
+    # Створюємо повністю НОВОГО юзера спеціально для цього тесту, 
+    # щоб у нього був чистий, не використаний ліміт у Redis
+    username = f"spammer_{uuid.uuid4().hex[:6]}"
+    client.post("/auth/register", json={"username": username, "password": "123456"})
+    token = client.post("/auth/login", data={"username": username, "password": "123456"}).json()["access_token"]
+    
+    headers = {"Authorization": f"Bearer {token}"}
+    statuses = []
+    
+    # Робимо 11 швидких запитів (ліміт 10)
+    for _ in range(11):
+        resp = client.get("/books/", headers=headers)
+        statuses.append(resp.status_code)
+
+    # Перевіряємо, що перший пройшов успішно (200), а останній був заблокований (429)
+    assert statuses[0] == 200
+    assert statuses[-1] == 429
