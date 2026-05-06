@@ -235,6 +235,12 @@ components:
       - author
       - year
       title: BookCreate
+      example:
+        title: "Clean Code"
+        author: "Robert C. Martin"
+        description: "A Handbook of Agile Software Craftsmanship"
+        status: "available in the library"
+        year: 2008
     BookResponse:
       properties:
         title:
@@ -268,6 +274,13 @@ components:
       - year
       - _id
       title: BookResponse
+      example:
+        _id: "64b5f8e4a3c9e21a4b8b4567"
+        title: "Clean Code"
+        author: "Robert C. Martin"
+        description: "A Handbook of Agile Software Craftsmanship"
+        status: "available in the library"
+        year: 2008
     BookStatus:
       type: string
       enum:
