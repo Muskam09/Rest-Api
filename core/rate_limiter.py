@@ -16,7 +16,7 @@ async def rate_limit(request: Request, user_id: str | None = None):
     # У тестах request.client може бути None, тому додаємо fallback "127.0.0.1"
     ip = request.client.host if request.client else "127.0.0.1"
     identity = user_id or ip
-    
+
     limit_type = "authenticated" if user_id else "anonymous"
     limit, period = RATE_LIMITS[limit_type]
 

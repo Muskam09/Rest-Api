@@ -104,7 +104,7 @@ def test_rate_limit_authenticated(client):
     username = f"spammer_{uuid.uuid4().hex[:6]}"
     client.post("/auth/register", json={"username": username, "password": "123456"})
     token = client.post("/auth/login", data={"username": username, "password": "123456"}).json()["access_token"]
-    
+
     headers = {"Authorization": f"Bearer {token}"}
     statuses = []
     
